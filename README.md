@@ -5,9 +5,10 @@
 * **View Grades without feedback**: Shows your grades of courses without feedback directly on the page.
 * **Submits feedback with single click**: Submits feedback for all courses with a single click.
 * **Automatic CAPTCHA Solver**: Automatically fills in the CAPTCHA on the AIMS login page.
-* **Timetable Exporter**: Allows you to select your registered courses and download them as an `.ics` file, which can be imported into Google Calendar, Apple Calendar, and other calendar applications.
+* **Timetable Exporter**: Allows you to select your registered courses and download them as an `.ics` file, which can be imported into Google Calendar, Apple Calendar, and other calendar applications. It also automatically generates a visual timetable image.
 * **GPA Viewer**: Clearly displays your SGPA and CGPA (from database) for each semester directly on your course history page.
 * **Credits Calculator**: An interactive tool to simulate your GPA, set target credits, share Curriculum, and export formatted PDF reports.
+
 ---
 
 ## Installation
@@ -24,19 +25,24 @@ git clone https://github.com/Dilip3936/AIMS_Helper.git
 
 This extension works on Google Chrome and other Chromium-based browsers (Edge, Brave, etc.).
 
-1.  **Open the Chrome Extensions Page**
-    * Launch your Google Chrome browser.
-    * In the address bar, navigate to `chrome://extensions/` and press Enter.
-2.  **Enable Developer Mode**
-    * On the Extensions page, find the **"Developer mode"** toggle switch, usually located in the top-right corner.
-    * Turn this toggle **on**. This will reveal additional options, including the "Load unpacked" button.
-3.  **Load Your Extension**
-    * Click the **"Load unpacked"** button.
-    * Navigate to the directory where you saved the extension's files (the folder containing `manifest.json`).
-    * Select the folder to install the extension.
+1. **Open the Chrome Extensions Page**
+* Launch your Google Chrome browser.
+* In the address bar, navigate to `chrome://extensions/` and press Enter.
+
+
+2. **Enable Developer Mode**
+* On the Extensions page, find the **"Developer mode"** toggle switch, usually located in the top-right corner.
+* Turn this toggle **on**. This will reveal additional options, including the "Load unpacked" button.
+
+
+3. **Load Your Extension**
+* Click the **"Load unpacked"** button.
+* Navigate to the directory where you saved the extension's files (the folder containing `manifest.json`).
+* Select the folder to install the extension.
+
+
 
 ---
-
 
 ## Usage Guide
 
@@ -56,55 +62,48 @@ After installing the extension, it will automatically start filling the CAPTCHA 
 
 ### Downloading Your Timetable
 
-1.  Open the AIMS course registration page and click on the extension's icon in your browser's toolbar.
-2.  Select the courses you wish to export, optionally add the venue for each course, and download the `.ics` file.
+1. Open the AIMS course registration page and click on the extension's icon in your browser's toolbar.
+2. Select the courses you wish to export, optionally add the venue for each course, and download the `.ics` file.
+3. A visual preview of your timetable will appear in the extension. Click the image to open a full-size version in a new tab.
 
 #### **Importing to Your Calendar:**
 
 * **Android**: Open the `.ics` file and select your calendar app to add the events.
 * **Web (Google Calendar, etc.)**: Go to your calendar's website, find **Settings > Import & Export**, and select the downloaded `.ics` file to import.
 
-### Credits Calculator 
+### Credits Calculator
 
 The extension includes a built-in GPA planner and report formatter. All data is processed locally.
 
-- **Opening the Editor**: Navigate to your AIMS course history page. The extension will automatically read your academic data. Click the "Open Credits Calculator" button on the page to launch the tool.
-    
-- **Planning & Editing**:
-    
-    - Change grades, credits, or course types to simulate your CGPA.
-        
-    - Set target credits for different course categories in the summary section.
-        
-    - Click the remove button to delete categories that have zero credits.
-        
-    - Drag and drop summary rows to rearrange their display order.
-        
-- **Using Templates**:
-    
-    - **Export**: Save your custom course types, sorting order, target credits, and course suggestions as a `.json` template to share with others.
-        
-    - **Import**: Load a `.json` template to apply a Curriculum.
-        
-    - **Apply Suggestions**: Click this button to automatically update your courses to match the suggested types defined in the Curriculum.
-        
-- **Controls**:
-    
-    - **Undo**: Reverts your last edit.
-        
-    - **Reset Edits**: Clears your manual changes while keeping your base AIMS data intact.
-        
-    - **Clear**: Completely wipes the saved data and resets the tool to a blank state.
-        
-    - **Download PDF**: Exports your customized report as a clean, print-ready document.
-        
+* **Opening the Editor**: Navigate to your AIMS course history page. The extension will automatically read your academic data. Click the "Open Credits Calculator" button on the page to launch the tool.
+* **Planning & Editing**:
+* Change grades, credits, or course types to simulate your CGPA.
+* Set target credits for different course categories in the summary section.
+* Click the remove button to delete categories that have zero credits.
+* Drag and drop summary rows to rearrange their display order.
+
+
+* **Using Templates**:
+* **Export**: Save your custom course types, sorting order, target credits, and course suggestions as a `.json` template to share with others.
+* **Import**: Load a `.json` template to apply a Curriculum.
+* **Apply Suggestions**: Click this button to automatically update your courses to match the suggested types defined in the Curriculum.
+
+
+* **Controls**:
+* **Undo**: Reverts your last edit.
+* **Reset Edits**: Clears your manual changes while keeping your base AIMS data intact.
+* **Clear**: Completely wipes the saved data and resets the tool to a blank state.
+* **Download PDF**: Exports your customized report as a clean, print-ready document.
+
+
 
 ---
+
 ## Code Organization
 
 Each feature now has a dedicated file for easier navigation:
 
-* `timetable.js` - popup timetable scraping, selection UI, and `.ics` export.
+* `timetable.js` - popup timetable scraping, selection UI, `.ics` export, and timetable image generation.
 * `grade_fetch.js` - popup trigger for background grade fetching.
 * `feedback_submitter.js` - popup trigger and submission flow for feedback.
 * `login_captcha_autofill.js` - CAPTCHA autofill on login pages.
@@ -126,7 +125,7 @@ If you modify or update the extension's code, you must reload it for the changes
 
 ## Note:
 
-* **This extension is not related to Lambda (IITH) nor the admin department of IITH.**
+* **This extension is not related to Lambda (IITH) nor the admin/academic department of IITH.**
 
 ---
 
