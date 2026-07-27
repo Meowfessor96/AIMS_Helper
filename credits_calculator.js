@@ -34,6 +34,87 @@ document.addEventListener("DOMContentLoaded", async () => {
   const gradePoints = { "A+": 10, "A": 10, "A-": 9, "B": 8, "B-": 7, "C": 6, "C-": 5, "D": 4, "P": 2, "U": 0, "F": 0, "W": 0, "I": 0 };
   const allowedGrades = ["", "A+", "A", "A-", "B", "B-", "C", "C-", "D", "P", "U", "F", "W", "I"];
 
+  let selectedFilterTypes = null;
+  let currentSortBy = "DEFAULT";
+
+  function isTypeEnabled(type) {
+    if (!selectedFilterTypes) return true;
+    return selectedFilterTypes.has(type);
+  }
+
+  function isCheckboxCheckedInUI(type) {
+    if (!selectedFilterTypes) return false;
+    return selectedFilterTypes.has(type);
+  }
+
+  function syncSummaryCheckboxes() {
+    document.querySelectorAll(".summary-type-filter-cb").forEach(cb => {
+      cb.checked = isCheckboxCheckedInUI(cb.value);
+    });
+  }
+
+  function isRegularSemester(semesterName) {
+    if (!semesterName) return false;
+    const s = String(semesterName).toLowerCase();
+    if (s.includes("summer") || s.includes("vacation") || s.includes("winter") || s.includes("remedial")) {
+      return false;
+    }
+    const monthMap = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, september: 9,
+      sept: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+    };
+    const parts = s.split(/[-–—\s]+/);
+    let m1 = null, m2 = null;
+    for (const p of parts) {
+      if (monthMap[p]) {
+        if (!m1) m1 = monthMap[p];
+        else if (!m2) m2 = monthMap[p];
+      }
+    }
+    if (m1 && m2) {
+      const diff = (m2 - m1 + 12) % 12;
+      if (diff < 3 || diff > 6) return false;
+    }
+    return true;
+  }
+
+  function updateFilterModalUI() {
+    const container = document.getElementById("filter-types-checkbox-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    availableTypes.forEach(t => {
+      const isChecked = isCheckboxCheckedInUI(t);
+      const label = document.createElement("label");
+      label.className = "filter-checkbox-item";
+      label.innerHTML = `
+        <input type="checkbox" value="${t}" ${isChecked ? "checked" : ""} class="filter-type-cb" />
+        <span>${t}</span>
+      `;
+      container.appendChild(label);
+    });
+
+    container.querySelectorAll(".filter-type-cb").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (!selectedFilterTypes) {
+          selectedFilterTypes = new Set();
+        }
+        if (cb.checked) {
+          selectedFilterTypes.add(cb.value);
+        } else {
+          selectedFilterTypes.delete(cb.value);
+        }
+        if (selectedFilterTypes.size === 0) {
+          selectedFilterTypes = null;
+        }
+        syncSummaryCheckboxes();
+        renderTable();
+      });
+    });
+    syncSummaryCheckboxes();
+  }
+
   // --- Data Processing ---
   async function processData() {
     allCourses = aimsGpaData.map(course => ({ ...course, ...(courseOverrides[`${course.courseCd}_${course.periodName}`] || {}) }));
@@ -68,11 +149,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const points = gradePoints[grade] || 0;
       const type = course.courseElectiveTypeDesc ? course.courseElectiveTypeDesc.trim() : "Unspecified";
 
+      const isAdditional = type === "Additional" || type.toLowerCase().includes("additional");
       degreeData[degree].semesters[semester].courses.push(course);
       degreeData[degree].semesters[semester].allCredits += credits;
-      degreeData[degree].totalAllCredits += credits;
+      if (!isAdditional) {
+        degreeData[degree].totalAllCredits += credits;
+      }
 
-      if ((points > 0 || grade === "D" || grade === "P" || grade === "F" || grade === "U") && type !== "Additional") {
+      if ((points > 0 || grade === "D" || grade === "P" || grade === "F" || grade === "U") && !isAdditional) {
         degreeData[degree].semesters[semester].gradePoints += points * credits;
         degreeData[degree].semesters[semester].gradedCredits += credits;
         degreeData[degree].totalGradePoints += points * credits;
@@ -98,6 +182,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       photoEl.style.display = 'none';
       photoEl.src = "";
     }
+    updateFilterModalUI();
   }
 
   // --- Push to Undo Stack ---
@@ -269,19 +354,59 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     Object.entries(degreeData).forEach(([degree, degreeInfo]) => {
+      const totalRegularSems = Object.keys(degreeInfo.semesters).filter(s => isRegularSemester(s)).length;
+      let currentSemNumber = totalRegularSems;
       Object.entries(degreeInfo.semesters).forEach(([semester, data]) => {
+        let displaySemester = semester;
+        if (isRegularSemester(semester)) {
+          displaySemester = `Semester ${currentSemNumber} (${semester})`;
+          currentSemNumber--;
+        }
+
+        const id = `header_${degree.replace(/\s+/g, '')}_${semester.replace(/[^a-zA-Z0-9]/g, '')}`;
         const headerRow = document.createElement("tr");
         headerRow.style.backgroundColor = "#f3f4f6";
         headerRow.innerHTML = `
          <td colspan="5" style="padding: 16px 20px; font-weight: 600;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span id="header_${degree.replace(/\s+/g, '')}_${semester.replace(/[^a-zA-Z0-9]/g, '')}">Loading...</span>
+            <span id="${id}">Loading...</span>
             <span>${degree}</span>
           </div>
         </td>`;
         tbody.appendChild(headerRow);
 
-        data.courses.forEach((course) => {
+        let coursesToRender = [...data.courses];
+
+        if (selectedFilterTypes && selectedFilterTypes.size < availableTypes.length) {
+          coursesToRender = coursesToRender.filter(c => {
+            const type = c.courseElectiveTypeDesc ? c.courseElectiveTypeDesc.trim() : "Unspecified";
+            return selectedFilterTypes.has(type);
+          });
+        }
+
+        if (currentSortBy === "CREDITS_DESC") {
+          coursesToRender.sort((a, b) => (parseFloat(b.credits) || 0) - (parseFloat(a.credits) || 0));
+        } else if (currentSortBy === "CREDITS_ASC") {
+          coursesToRender.sort((a, b) => (parseFloat(a.credits) || 0) - (parseFloat(b.credits) || 0));
+        } else if (currentSortBy === "GRADE_DESC") {
+          coursesToRender.sort((a, b) => {
+            const ga = a.gradeDesc ? a.gradeDesc.trim().toUpperCase() : "";
+            const gb = b.gradeDesc ? b.gradeDesc.trim().toUpperCase() : "";
+            const pa = gradePoints[ga] !== undefined ? gradePoints[ga] : -1;
+            const pb = gradePoints[gb] !== undefined ? gradePoints[gb] : -1;
+            return pb - pa;
+          });
+        } else if (currentSortBy === "GRADE_ASC") {
+          coursesToRender.sort((a, b) => {
+            const ga = a.gradeDesc ? a.gradeDesc.trim().toUpperCase() : "";
+            const gb = b.gradeDesc ? b.gradeDesc.trim().toUpperCase() : "";
+            const pa = gradePoints[ga] !== undefined ? gradePoints[ga] : -1;
+            const pb = gradePoints[gb] !== undefined ? gradePoints[gb] : -1;
+            return pa - pb;
+          });
+        }
+
+        coursesToRender.forEach((course) => {
           const type = course.courseElectiveTypeDesc ? course.courseElectiveTypeDesc.trim() : "Unspecified";
           const grade = course.gradeDesc || "";
           const suggestion = suggestedCourseTypes[course.courseCd];
@@ -335,10 +460,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function updateHeaders() {
     Object.entries(degreeData).forEach(([degree, degreeInfo]) => {
+      const totalRegularSems = Object.keys(degreeInfo.semesters).filter(s => isRegularSemester(s)).length;
+      let currentSemNumber = totalRegularSems;
       Object.entries(degreeInfo.semesters).forEach(([semester, data]) => {
+        let displaySemester = semester;
+        if (isRegularSemester(semester)) {
+          displaySemester = `Semester ${currentSemNumber} (${semester})`;
+          currentSemNumber--;
+        }
         const gpa = data.gradedCredits > 0 ? (data.gradePoints / data.gradedCredits).toFixed(2) : "0.00";
         const id = `header_${degree.replace(/\s+/g, '')}_${semester.replace(/[^a-zA-Z0-9]/g, '')}`;
-        if(document.getElementById(id)) document.getElementById(id).textContent = `${semester} — GPA: ${gpa} (${data.allCredits.toFixed(1)} credits)`;
+        if (document.getElementById(id)) {
+          document.getElementById(id).innerHTML = `${displaySemester} — <span style="background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 0 10px rgba(255, 255, 255, 0.95), 0 1px 3px rgba(0,0,0,0.06); padding: 3px 10px; border-radius: 6px; font-weight: 600; color: #0f172a;">SGPA: ${gpa} (${data.allCredits.toFixed(1)} credits)</span>`;
+        }
       });
     });
   }
@@ -351,13 +485,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     summarySection.style.display = "block";
     summaryBody.innerHTML = "";
 
+    let totalAllCreditsSum = 0;
+    let totalGradedCreditsSum = 0;
+    let totalGradePointsSum = 0;
+    Object.values(degreeData).forEach(d => {
+      totalAllCreditsSum += d.totalAllCredits;
+      totalGradedCreditsSum += d.totalGradedCredits;
+      totalGradePointsSum += d.totalGradePoints;
+    });
+    const overallCgpa = totalGradedCreditsSum > 0 ? (totalGradePointsSum / totalGradedCreditsSum).toFixed(2) : "0.00";
+    const topCgpaEl = document.getElementById("top-stat-cgpa");
+    const topTotalEl = document.getElementById("top-stat-total-credits");
+    const topGradedEl = document.getElementById("top-stat-graded-credits");
+    if (topCgpaEl) topCgpaEl.textContent = overallCgpa;
+    if (topTotalEl) topTotalEl.textContent = totalAllCreditsSum.toFixed(1);
+    if (topGradedEl) topGradedEl.textContent = totalGradedCreditsSum.toFixed(1);
+
     Object.entries(degreeData).forEach(([degree, degreeInfo]) => {
       const cgpa = degreeInfo.totalGradedCredits > 0 ? (degreeInfo.totalGradePoints / degreeInfo.totalGradedCredits).toFixed(2) : "0.00";
       const totalTargetCredits = Object.values(requiredCreditsConfig).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
-      const targetStr = totalTargetCredits > 0 ? ` <span style="font-size:13px; color:#9ca3af; font-weight:400;">/ Target: ${totalTargetCredits.toFixed(1)}</span>` : "";
+      const targetStr = totalTargetCredits > 0 ? ` <span style="font-size:13px; color:#4b5563; font-weight:500;">/ Target: ${totalTargetCredits.toFixed(1)}</span>` : "";
 
       summaryBody.innerHTML += `
-        <tr><td colspan="4" style="font-weight: 600; padding: 12px 20px; background-color: #f3f4f6;">${degree}</td></tr>
+        <tr><td colspan="4" style="font-weight: 700; padding: 12px 20px; background-color: #f1f5f9; color: #0f172a;">${degree}</td></tr>
         <tr><td>CGPA</td><td colspan="3"><strong>${cgpa}</strong></td></tr>
         <tr><td>Total Credits Registered</td><td colspan="3"><strong>${degreeInfo.totalAllCredits.toFixed(1)}</strong>${degreeInfo.totalGradedCredits === degreeInfo.totalAllCredits ? targetStr : ""}</td></tr>
       `;
@@ -367,24 +517,48 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       summaryBody.innerHTML += `<tr>
-        <td style="padding: 8px 20px; font-size: 12px; color: #9ca3af; font-weight: 500;">Credits by Course Type</td>
-        <td style="padding: 8px 20px; font-size: 12px; color: #9ca3af; font-weight: 500; text-align: right; width: 80px;">Earned</td>
-        <td style="padding: 8px 20px; font-size: 12px; color: #9ca3af; font-weight: 500; text-align: right; width: 80px;">Target</td>
-        <td class="hide-print" style="padding: 8px 20px; font-size: 12px; color: #9ca3af; font-weight: 500; text-align: center; width: 50px;"></td>
+        <td style="padding: 10px 20px; font-size: 13px; color: #374151; font-weight: 600;">Credits by Course Type</td>
+        <td style="padding: 10px 20px; font-size: 13px; color: #374151; font-weight: 600; text-align: right; width: 80px;">Earned</td>
+        <td style="padding: 10px 20px; font-size: 13px; color: #374151; font-weight: 600; text-align: right; width: 80px;">Target</td>
+        <td class="hide-print" style="padding: 10px 20px; font-size: 13px; color: #374151; font-weight: 600; text-align: center; width: 50px;"></td>
       </tr>`;
       
       availableTypes.forEach((type) => {
         const total = creditSummaryByDegree[degree][type] || 0;
         const req = requiredCreditsConfig[type] !== undefined ? requiredCreditsConfig[type] : "";
+        const isChecked = isCheckboxCheckedInUI(type);
         
         summaryBody.innerHTML += `<tr class="type-row" draggable="true" data-type="${type}">
-          <td><span class="drag-handle hide-print">≡</span>${type}</td>
+          <td style="display: flex; align-items: center; gap: 8px; font-weight: 400;">
+            <span class="drag-handle hide-print">≡</span>
+            <input type="checkbox" class="summary-type-filter-cb hide-print" value="${type}" ${isChecked ? "checked" : ""} style="width: 16px; height: 16px; accent-color: #a855f7; cursor: pointer;" title="Filter table by ${type}" />
+            <span>${type}</span>
+          </td>
           <td>${total.toFixed(1)}</td>
           <td><input type="number" step="0.5" min="0" class="editable-input target-credit-input" style="width: 60px; font-weight: 600; text-align: right; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 4px;" data-type="${type}" value="${req}" placeholder="—" /></td>
           <td class="hide-print" style="text-align: center;">
             ${total === 0 ? `<button class="action-btn remove-type-btn" style="padding: 2px 6px; font-size: 11px; color: #dc2626; background: #fef2f2; border-color: #fecaca; min-width: 24px;" data-type="${type}" title="Remove Type">✖</button>` : ''}
           </td>
         </tr>`;
+      });
+    });
+
+    document.querySelectorAll(".summary-type-filter-cb").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (!selectedFilterTypes) {
+          selectedFilterTypes = new Set();
+        }
+        if (cb.checked) {
+          selectedFilterTypes.add(cb.value);
+        } else {
+          selectedFilterTypes.delete(cb.value);
+        }
+        if (selectedFilterTypes.size === 0) {
+          selectedFilterTypes = null;
+        }
+        updateFilterModalUI();
+        syncSummaryCheckboxes();
+        renderTable();
       });
     });
 
@@ -488,9 +662,59 @@ document.addEventListener("DOMContentLoaded", async () => {
         select.innerHTML = availableTypes.map(t => `<option value="${t}" ${t === val ? "selected" : ""}>${t}</option>`).join("");
       });
       input.value = "";
+      if (selectedFilterTypes) selectedFilterTypes.add(newType);
+      updateFilterModalUI();
       renderSummary();
     }
   });
+
+  const filterSortBtn = document.getElementById("filterSortBtn");
+  const filterSortOverlay = document.getElementById("filterSortOverlay");
+  const filterSortClose = document.getElementById("filterSortClose");
+  const filterApplyBtn = document.getElementById("filterApplyBtn");
+  const selectAllBtn = document.getElementById("selectAllTypesBtn");
+  const clearAllBtn = document.getElementById("clearAllTypesBtn");
+
+  if (filterSortBtn && filterSortOverlay) {
+    filterSortBtn.addEventListener("click", () => {
+      updateFilterModalUI();
+      filterSortOverlay.classList.add("open");
+    });
+  }
+  const closeFilterModal = () => {
+    if (filterSortOverlay) filterSortOverlay.classList.remove("open");
+  };
+  if (filterSortClose) filterSortClose.addEventListener("click", closeFilterModal);
+  if (filterApplyBtn) filterApplyBtn.addEventListener("click", closeFilterModal);
+  if (filterSortOverlay) {
+    filterSortOverlay.addEventListener("click", (e) => {
+      if (e.target === filterSortOverlay) closeFilterModal();
+    });
+  }
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener("click", () => {
+      selectedFilterTypes = new Set(availableTypes);
+      updateFilterModalUI();
+      syncSummaryCheckboxes();
+      renderTable();
+    });
+  }
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener("click", () => {
+      selectedFilterTypes = null;
+      updateFilterModalUI();
+      syncSummaryCheckboxes();
+      renderTable();
+    });
+  }
+
+  const sortSelectEl = document.getElementById("sort-by-select");
+  if (sortSelectEl) {
+    sortSelectEl.addEventListener("change", (e) => {
+      currentSortBy = e.target.value;
+      renderTable();
+    });
+  }
 
   // --- PDF Download Handling ---
   document.getElementById("downloadBtn").addEventListener("click", () => {
@@ -499,15 +723,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const bottomControls = document.getElementById("bottom-controls");
     const controlsBar = document.getElementById("controls-bar");
     const controlsBar2 = document.getElementById("controls-bar-2");
-    const hiddenElements = element.querySelectorAll(".hide-print");
+    const hiddenElements = element.querySelectorAll(".hide-print, input[type='checkbox'], button, .drag-handle, .remove-type-btn, .summary-type-filter-cb");
+    const originalDisplays = new Map();
+    hiddenElements.forEach(el => {
+      originalDisplays.set(el, el.style.display);
+      el.style.display = "none";
+    });
 
     if(bottomControls) bottomControls.style.display = "none";
     if(controlsBar) controlsBar.style.display = "none";
     if(controlsBar2) controlsBar2.style.display = "none";
-    hiddenElements.forEach(el => el.style.display = "none");
 
     const originalStyles = { boxShadow: element.style.boxShadow, borderRadius: element.style.borderRadius, overflow: element.style.overflow };
     element.style.boxShadow = "none"; element.style.borderRadius = "0"; element.style.overflow = "visible";
+    const headerEl = element.querySelector('.header');
+    const origHeaderOverflow = headerEl ? headerEl.style.overflow : "";
+    if (headerEl) headerEl.style.overflow = "visible";
 
     const inputs = element.querySelectorAll('select.editable-input, input.editable-input');
     inputs.forEach(input => {
@@ -532,21 +763,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     const doc = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+    const targetWidth = doc.internal.pageSize.getWidth();
+    const scale = (targetWidth - 40) / 1040;
     doc.html(element, {
       callback: function (doc) {
         element.style.boxShadow = originalStyles.boxShadow; element.style.borderRadius = originalStyles.borderRadius; element.style.overflow = originalStyles.overflow;
+        if (headerEl) headerEl.style.overflow = origHeaderOverflow;
         if(bottomControls) bottomControls.style.display = "flex";
         if(controlsBar) controlsBar.style.display = "flex";
         if(controlsBar2) controlsBar2.style.display = "flex";
-        hiddenElements.forEach(el => el.style.display = "");
+        hiddenElements.forEach(el => {
+          el.style.display = originalDisplays.get(el) || "";
+        });
 
         document.querySelectorAll('.temp-pdf-span').forEach(span => span.remove());
         inputs.forEach(input => input.style.display = '');
 
         doc.save(`AIMS_GPA_Report_${aimsStudentData?.rollno || "Export"}.pdf`);
       },
-      margin: [40, 20, 40, 20], html2canvas: { scale: 0.6, useCORS: true },
-      width: doc.internal.pageSize.getWidth(), windowWidth: element.scrollWidth, x: 0, y: 0
+      margin: [20, 20, 20, 20],
+      html2canvas: { scale: scale, useCORS: true, scrollX: 0, scrollY: 0 },
+      width: targetWidth,
+      windowWidth: 1040,
+      x: 0,
+      y: 0
     });
   });
 

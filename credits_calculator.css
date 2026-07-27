@@ -13,7 +13,7 @@ body {
 }
 
 .report {
-  max-width: 920px;
+  max-width: 1040px;
   margin: 0 auto;
   background: #ffffff;
   border-radius: 16px;
@@ -23,12 +23,13 @@ body {
 
 .header {
   background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-  padding: 48px 40px;
+  padding: 36px 40px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 32px;
   position: relative;
-  overflow: hidden;
 }
 
 .header::before {
@@ -41,6 +42,8 @@ body {
   background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
   border-radius: 50%;
   transform: translate(30%, -30%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .profile-photo {
@@ -107,15 +110,18 @@ body {
   flex-wrap: wrap;
 }
 
-.controls-bar input {
+.controls-bar input,
+.controls-bar select {
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 14px;
   outline: none;
+  background-color: #fff;
 }
 
-.controls-bar input:focus {
+.controls-bar input:focus,
+.controls-bar select:focus {
   border-color: #a855f7;
 }
 
@@ -274,8 +280,8 @@ tbody tr:last-child td {
 }
 
 #summary-table td:first-child {
-  font-weight: 500;
-  color: #6b7280;
+  font-weight: 400;
+  color: #1f2937;
 }
 
 #summary-table td:nth-child(2),
@@ -484,4 +490,78 @@ tbody tr:last-child td {
 .footer-link:hover {
   color: #1a1a1a;
   text-decoration: underline;
+}
+
+/* Styled Checkbox List for Filter Modal */
+.styled-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f9fafb;
+}
+
+.filter-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+  user-select: none;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.filter-checkbox-item:hover {
+  background: #f3f4f6;
+}
+
+.filter-checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #a855f7;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+/* Stats Box in Top Student Details Section */
+.header-stats-box {
+  display: flex;
+  gap: 24px;
+  background: #262626;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 14px 24px;
+  border-radius: 12px;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+}
+
+.header-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+
+.header-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
 }

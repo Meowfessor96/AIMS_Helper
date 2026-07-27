@@ -13,11 +13,27 @@
   <div class="report">
     <header class="header">
       <button class="help-icon hide-print" id="helpBtn" title="Help">?</button>
-      <img id="photo" class="profile-photo" src="" alt="" style="display: none;" />
-      <div class="student-info">
-        <h1 id="student-name">Loading...</h1>
-        <p id="rollno"></p>
-        <p id="branch"></p>
+      <div style="display: flex; align-items: center; gap: 28px;">
+        <img id="photo" class="profile-photo" src="" alt="" style="display: none;" />
+        <div class="student-info">
+          <h1 id="student-name">Loading...</h1>
+          <p id="rollno"></p>
+          <p id="branch"></p>
+        </div>
+      </div>
+      <div id="top-stats-box" class="header-stats-box">
+        <div class="header-stat-item">
+          <span class="header-stat-label">CGPA</span>
+          <span class="header-stat-value" id="top-stat-cgpa">—</span>
+        </div>
+        <div class="header-stat-item">
+          <span class="header-stat-label">Graded Credits</span>
+          <span class="header-stat-value" id="top-stat-graded-credits">—</span>
+        </div>
+        <div class="header-stat-item">
+          <span class="header-stat-label">Total Credits</span>
+          <span class="header-stat-value" id="top-stat-total-credits">—</span>
+        </div>
       </div>
     </header>
 
@@ -40,6 +56,9 @@
             <button id="importConfigBtn" class="main-btn btn-outline" style="padding: 9px 20px; font-size: 14px;">📥
               Import
               Curriculum</button>
+          </div>
+          <div class="controls-group">
+            <button id="filterSortBtn" class="action-btn" style="padding: 9px 20px; font-size: 14px;">🔍 Filter</button>
           </div>
         </div>
 
@@ -109,6 +128,42 @@
           <li><strong>Clear:</strong> Completely wipes the saved data and resets the tool to a blank state.</li>
           <li><strong>Download PDF:</strong> Exports your customized report as a clean, print-ready document.</li>
         </ul>
+      </div>
+    </div>
+
+    <!-- Filter & Sort Modal -->
+    <div class="help-overlay hide-print" id="filterSortOverlay">
+      <div class="help-modal" style="max-width: 480px;">
+        <button class="help-close" id="filterSortClose">×</button>
+        <h2>Filter &amp; Sort</h2>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="margin-top: 0;">Sort By</h3>
+          <select id="sort-by-select" class="editable-input" style="width: 100%; border: 1px solid #d1d5db; padding: 10px 12px; border-radius: 8px; font-size: 14px; background: #f9fafb;">
+            <option value="DEFAULT">Default Order</option>
+            <option value="CREDITS_DESC">Credits (High → Low)</option>
+            <option value="CREDITS_ASC">Credits (Low → High)</option>
+            <option value="GRADE_DESC">Grade (High → Low)</option>
+            <option value="GRADE_ASC">Grade (Low → High)</option>
+          </select>
+        </div>
+
+        <div style="margin: 20px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin: 0;">Filter Course Types</h3>
+            <div style="display: flex; gap: 8px;">
+              <button id="selectAllTypesBtn" class="action-btn" style="padding: 4px 10px; font-size: 12px;">Select All</button>
+              <button id="clearAllTypesBtn" class="action-btn" style="padding: 4px 10px; font-size: 12px;">Clear All</button>
+            </div>
+          </div>
+          <div id="filter-types-checkbox-list" class="styled-checkbox-list">
+            <!-- Dynamically populated checkboxes -->
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 24px; gap: 10px;">
+          <button id="filterApplyBtn" class="main-btn btn-dark" style="min-width: 120px; padding: 10px 20px;">Done</button>
+        </div>
       </div>
     </div>
 
