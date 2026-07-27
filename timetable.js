@@ -77,9 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.course-checkbox').forEach(box => {
             box.checked = event.target.checked;
         });
-        updatePreview();
+        schedulePreviewUpdate();  // debounced
     });
 });
+
+// ── Scraper (injected into the AIMS page) ────────────────────────────────────
 
 async function scrapeTimetableData() {
     const allIcons = document.querySelectorAll('span.time_tab_icon');
@@ -90,29 +92,34 @@ async function scrapeTimetableData() {
             const parentRow = icon.closest('.formRowBlock');
             if (!parentRow) { resolve(null); return; }
 
-            const courseCode = parentRow.querySelector('input[id^="cCd_"]')?.title || 'Unknown Code';
+            const courseCode  = parentRow.querySelector('input[id^="cCd_"]')?.title  || 'Unknown Code';
             const courseTitle = parentRow.querySelector('input[id^="cDesc_"]')?.title || 'Unknown Title';
-            const fullTitle = `${courseCode}: ${courseTitle}`;
+            const fullTitle   = `${courseCode}: ${courseTitle}`;
 
             const timetableDivId = icon.id.replace('timeTab_', 'tt_');
-            const timetableDiv = document.getElementById(timetableDivId);
+            const timetableDiv   = document.getElementById(timetableDivId);
 
             if (!timetableDiv) { resolve({ title: fullTitle, schedule: [] }); return; }
 
             const observer = new MutationObserver(() => {
                 let scheduleData = [];
-                const tableRows = timetableDiv.querySelectorAll('tbody tr');
+                const tableRows  = timetableDiv.querySelectorAll('tbody tr');
 
                 if (tableRows.length > 0 && !tableRows[0].textContent.includes("No Time Table Available")) {
                     tableRows.forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 3) {
                             try {
+                                // Try JSON format first (cells[2] may contain full API response)
                                 const content = cells[2].textContent.trim();
-                                const parsed = JSON.parse(content);
-                                scheduleData = scheduleData.concat(parsed);
-                            } catch(e) {
-                                scheduleData.push(cells[2].textContent.trim());
+                                const parsed  = JSON.parse(content);
+                                scheduleData  = scheduleData.concat(parsed);
+                            } catch (e) {
+                                // String format: cells[1]=segment, cells[2]="DD-MM-YYYY----Day-HH:MM-HH:MM"
+                                const segName = cells[1]?.textContent.trim() || '';
+                                const timing  = cells[2].textContent.trim();
+                                // Append segName as a 3rd ---- field so generateTimetableImage can extract it
+                                scheduleData.push(segName ? `${timing}----${segName}` : timing);
                             }
                         }
                     });
@@ -126,9 +133,20 @@ async function scrapeTimetableData() {
             //icon.click();
         });
     };
+
     const scrapePromises = Array.from(allIcons).map(icon => createScrapePromise(icon));
     return Promise.all(scrapePromises).then(results => results.filter(Boolean));
 }
+
+// ── Debounced preview update ──────────────────────────────────────────────────
+// Prevents the canvas from re-rendering on every keypress / checkbox click.
+let previewDebounceTimer = null;
+function schedulePreviewUpdate() {
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => updatePreview(), 300);
+}
+
+// ── ICS schedule processing (unchanged) ──────────────────────────────────────
 
 function processScheduleForICS(rawSchedule) {
     if (!rawSchedule || rawSchedule.length === 0) return null;
@@ -148,7 +166,7 @@ function processScheduleForICS(rawSchedule) {
             const parts = typeof item === 'string' ? item.split('----') : [];
             if (parts.length < 2) return;
             const dateStr = parts[0];
-            const slot = parts[1];
+            const slot    = parts[1]; // parts[2] is segName — not needed for ICS
             if (!scheduleMap.has(slot)) scheduleMap.set(slot, []);
             scheduleMap.get(slot).push(new Date(dateStr.split('-').reverse().join('-')));
         }
@@ -164,13 +182,15 @@ function processScheduleForICS(rawSchedule) {
     return processed;
 }
 
+// ── ICS helpers (unchanged) ───────────────────────────────────────────────────
+
 function getSelectedCourses() {
     const selectedCourses = [];
     const checkboxes = document.querySelectorAll('.course-checkbox:checked');
     checkboxes.forEach(box => {
         const courseData = JSON.parse(box.dataset.courseData);
-        const venue = box.closest('.course-item').querySelector('.venue-input').value;
-        selectedCourses.push({ ...courseData, venue: venue });
+        const venue      = box.closest('.course-item').querySelector('.venue-input').value;
+        selectedCourses.push({ ...courseData, venue });
     });
     return selectedCourses;
 }
@@ -191,22 +211,22 @@ function generateICSContent(selectedCourses, reminder) {
 
             const dayOfWeek = slotParts[0];
             const startTime = slotParts[1].replace(/:/g, '');
-            const endTime = slotParts[2].replace(/:/g, '');
+            const endTime   = slotParts[2].replace(/:/g, '');
 
             const firstEventDate = new Date(startDate);
             while (firstEventDate.toLocaleDateString('en-US', { weekday: 'long' }) !== dayOfWeek) {
                 firstEventDate.setDate(firstEventDate.getDate() + 1);
             }
             
-            const startYear = firstEventDate.getFullYear();
+            const startYear  = firstEventDate.getFullYear();
             const startMonth = (firstEventDate.getMonth() + 1).toString().padStart(2, '0');
-            const startDay = firstEventDate.getDate().toString().padStart(2, '0');
+            const startDay   = firstEventDate.getDate().toString().padStart(2, '0');
 
-            const untilDate = new Date(endDate);
+            const untilDate  = new Date(endDate);
             untilDate.setDate(untilDate.getDate() + 1);
-            const untilYear = untilDate.getUTCFullYear();
+            const untilYear  = untilDate.getUTCFullYear();
             const untilMonth = (untilDate.getUTCMonth() + 1).toString().padStart(2, '0');
-            const untilDay = untilDate.getUTCDate().toString().padStart(2, '0');
+            const untilDay   = untilDate.getUTCDate().toString().padStart(2, '0');
 
             const uid = `${startYear}${startMonth}${startDay}T${startTime}00-${Math.random().toString(36).substr(2, 9)}@aims.exporter`;
             
@@ -227,48 +247,48 @@ function generateICSContent(selectedCourses, reminder) {
     return icsContent + 'END:VCALENDAR';
 }
 
+// ── Course selection UI (unchanged) ───────────────────────────────────────────
+
 function displayCoursesForSelection(data) {
     const selectionDiv = document.getElementById('course-selection');
-    const controls = document.getElementById('controls');
-    const footer = document.getElementById('footer');
+    const controls     = document.getElementById('controls');
+    const footer       = document.getElementById('footer');
     selectionDiv.innerHTML = '';
 
     ensurePreviewContainer();
 
     let courseCounter = 0;
     data.forEach(course => {
-        if (!course.schedule || course.schedule.length === 0) return;
+        // REMOVED: if (!course.schedule || course.schedule.length === 0) return;
 
         courseCounter++;
-        const courseItem = document.createElement('div');
+        const courseItem     = document.createElement('div');
         courseItem.className = 'course-item';
 
-        const labelGroup = document.createElement('div');
+        const labelGroup     = document.createElement('div');
         labelGroup.className = 'course-label-group';
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = `course_${courseCounter}`;
-        checkbox.className = 'course-checkbox';
-        checkbox.dataset.courseData = JSON.stringify({ 
-            title: course.title, 
-            rawSchedule: course.schedule 
-        });
-        checkbox.checked = true;
-        checkbox.addEventListener('change', updatePreview);
+        const checkbox       = document.createElement('input');
+        checkbox.type        = 'checkbox';
+        checkbox.id          = `course_${courseCounter}`;
+        checkbox.className   = 'course-checkbox';
+        // Pass empty arrays cleanly
+        checkbox.dataset.courseData = JSON.stringify({ title: course.title, rawSchedule: course.schedule || [] });
+        checkbox.checked     = true;
+        checkbox.addEventListener('change', schedulePreviewUpdate);
 
-        const label = document.createElement('label');
-        label.htmlFor = `course_${courseCounter}`;
+        const label      = document.createElement('label');
+        label.htmlFor    = `course_${courseCounter}`;
         label.textContent = course.title;
 
         labelGroup.appendChild(checkbox);
         labelGroup.appendChild(label);
         
-        const venueInput = document.createElement('input');
-        venueInput.type = 'text';
-        venueInput.className = 'venue-input';
+        const venueInput       = document.createElement('input');
+        venueInput.type        = 'text';
+        venueInput.className   = 'venue-input';
         venueInput.placeholder = 'Venue...';
-        venueInput.addEventListener('input', updatePreview);
+        venueInput.addEventListener('input', schedulePreviewUpdate);
 
         courseItem.appendChild(labelGroup);
         courseItem.appendChild(venueInput);
@@ -277,7 +297,7 @@ function displayCoursesForSelection(data) {
     
     if (courseCounter > 0) {
         controls.style.display = 'flex';
-        footer.style.display = 'block';
+        footer.style.display   = 'block';
         document.getElementById('selectAll').checked = true;
         updatePreview();
     } else {
@@ -287,18 +307,18 @@ function displayCoursesForSelection(data) {
 
 function ensurePreviewContainer() {
     if (!document.getElementById('timetable-preview-container')) {
-        const container = document.createElement('div');
-        container.id = 'timetable-preview-container';
-        container.style.display = 'none';
-        container.style.margin = '15px 0';
-        container.style.textAlign = 'center';
+        const container  = document.createElement('div');
+        container.id     = 'timetable-preview-container';
+        container.style.display    = 'none';
+        container.style.margin     = '15px 0';
+        container.style.textAlign  = 'center';
 
-        const img = document.createElement('img');
-        img.id = 'timetable-preview-img';
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '220px';
-        img.style.cursor = 'pointer';
-        img.style.border = '1px solid #ccc';
+        const img  = document.createElement('img');
+        img.id     = 'timetable-preview-img';
+        img.style.maxWidth    = '100%';
+        img.style.maxHeight   = '220px';
+        img.style.cursor      = 'pointer';
+        img.style.border      = '1px solid #ccc';
         img.style.borderRadius = '4px';
         img.title = 'Click to open generated timetable in full size';
 
@@ -311,7 +331,6 @@ function ensurePreviewContainer() {
         });
 
         container.appendChild(img);
-        
         const courseSelection = document.getElementById('course-selection');
         courseSelection.parentNode.insertBefore(container, courseSelection);
     }
@@ -319,8 +338,8 @@ function ensurePreviewContainer() {
 
 async function updatePreview() {
     const selectedCourses = getSelectedCourses();
-    const container = document.getElementById('timetable-preview-container');
-    const img = document.getElementById('timetable-preview-img');
+    const container       = document.getElementById('timetable-preview-container');
+    const img             = document.getElementById('timetable-preview-img');
 
     if (selectedCourses.length === 0) {
         container.style.display = 'none';
@@ -328,254 +347,474 @@ async function updatePreview() {
     }
 
     const dataUrl = await generateTimetableImage(selectedCourses);
-    img.src = dataUrl;
+    img.src       = dataUrl;
     container.style.display = 'block';
 }
 
+// ── Timetable image generator ─────────────────────────────────────────────────
+
 async function generateTimetableImage(selectedCourses) {
-    const events = [];
-    const isJsonFormat = selectedCourses.some(c => typeof c.rawSchedule[0] === 'object');
-    
+
+    // ── Column definitions ────────────────────────────────────────────────────
+    const BASE_COLUMNS = [
+        { label: "9:00\n9:55",   start: "090000", end: "095500", startMins: 540, endMins: 595  },
+        { label: "10:00\n10:55", start: "100000", end: "105500", startMins: 600, endMins: 655  },
+        { label: "11:00\n11:55", start: "110000", end: "115500", startMins: 660, endMins: 715  },
+        { label: "12:00\n12:55", start: "120000", end: "125500", startMins: 720, endMins: 775  },
+        { label: "12:55\n14:30", type: "break",  text: "Lunch", width: 60                      },
+        { label: "14:30\n15:55", start: "143000", end: "155500", startMins: 870, endMins: 955  },
+        { label: "16:00\n17:25", start: "160000", end: "172500", startMins: 960, endMins: 1045 },
+    ];
+    const LATE_COLUMNS = [
+        { label: "", type: "break", text: "S\nN\nA\nC\nK\n\nB\nR\nE\nA\nK", width: 45           },
+        { label: "18:00\n19:25", start: "180000", end: "192500", startMins: 1080, endMins: 1165 },
+        { label: "19:30\n21:00", start: "193000", end: "210000", startMins: 1170, endMins: 1260 },
+    ];
+
+    const allColStartDefs = [...BASE_COLUMNS, ...LATE_COLUMNS]
+        .filter(c => !c.type)
+        .map(c => ({ key: c.start, mins: c.startMins }));
+
+    // ── Time helpers ──────────────────────────────────────────────────────────
+    function timeStrToKey(timeStr) {
+        if (!timeStr || !timeStr.includes(':')) return null;
+        const [hh, mm] = timeStr.split(':').map(Number);
+        if (isNaN(hh)) return null;
+        const mins = hh * 60 + (mm || 0);
+        const SNAP = 5;
+        let bestKey = null, bestDist = SNAP + 1;
+        for (const cs of allColStartDefs) {
+            const d = Math.abs(mins - cs.mins);
+            if (d <= SNAP && d < bestDist) { bestDist = d; bestKey = cs.key; }
+        }
+        return bestKey || `${hh.toString().padStart(2,'0')}${(mm||0).toString().padStart(2,'0')}00`;
+    }
+
+    function keyToMins(key) {
+        return parseInt(key.slice(0, 2), 10) * 60 + parseInt(key.slice(2, 4), 10);
+    }
+
+    // ── Process events ────────────────────────────────────────────────────────
+    const isJsonFormat = selectedCourses.some(c =>
+        Array.isArray(c.rawSchedule) &&
+        typeof c.rawSchedule[0] === 'object' &&
+        c.rawSchedule[0]?.slotPeriodCdDays
+    );
+
+    const DAYS_MAP = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
+
+    const events         = [];
+    const overflowSeen   = new Set();
+    const overflowCourses = [];
+
+    function addOverflow(title, timing) {
+        const k = title + '|' + (timing || '');
+        if (!overflowSeen.has(k)) {
+            overflowSeen.add(k);
+            overflowCourses.push({ shortTitle: title.split(':')[0].trim(), fullTitle: title, timing });
+        }
+    }
+
     selectedCourses.forEach(course => {
-        if (!course.rawSchedule || !Array.isArray(course.rawSchedule)) return;
+        if (!course.rawSchedule || !Array.isArray(course.rawSchedule) || course.rawSchedule.length === 0) {
+            addOverflow(course.title, null);
+            return;
+        }
+
         const seenSlots = new Set();
-        
+
         course.rawSchedule.forEach(slot => {
-            let day, startTime, endTime, segName = "";
-            
-            if (isJsonFormat && typeof slot === 'object' && slot.slotPeriodCdDays) {
+            let day, startTimeStr, endTimeStr, segName = "";
+
+            if (isJsonFormat && typeof slot === 'object' && slot?.slotPeriodCdDays) {
                 const parts = slot.slotPeriodCdDays.split('-');
                 if (parts.length < 3) return;
-                day = parts[0];
-                startTime = parts[1].replace(':', '') + '00';
-                endTime = parts[2].replace(':', '') + '00';
-                segName = slot.segName || "";
+                day          = parts[0];
+                startTimeStr = parts[1];
+                endTimeStr   = parts[2];
+                segName      = slot.segName || "";
             } else if (!isJsonFormat && typeof slot === 'string') {
                 const parts = slot.split('----');
                 if (parts.length < 2) return;
                 const timeParts = parts[1].split('-');
-                day = timeParts[0];
-                startTime = timeParts[1].replace(':', '') + '00';
-                endTime = timeParts[2].replace(':', '') + '00';
+                if (timeParts.length < 3) return;
+                day          = timeParts[0];
+                startTimeStr = timeParts[1];
+                endTimeStr   = timeParts[2];
+                segName      = parts[2] || '';
             } else return;
-            
-            const uniqueKey = `${day}-${startTime}-${segName}`;
-            if (!seenSlots.has(uniqueKey)) {
-                seenSlots.add(uniqueKey);
-                const daysMap = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5 };
-                if (daysMap[day]) {
-                    events.push({
-                        title: course.title,
-                        location: course.venue,
-                        dayIndex: daysMap[day],
-                        startTime: startTime,
-                        endTime: endTime,
-                        segName: segName
-                    });
-                }
+
+            if (!day || !startTimeStr) return;
+
+            const startKey = timeStrToKey(startTimeStr);
+            const endKey   = timeStrToKey(endTimeStr) || startKey;
+            if (!startKey) return;
+
+            const uniqueKey = `${day}-${startKey}-${segName}`;
+            if (seenSlots.has(uniqueKey)) return;
+            seenSlots.add(uniqueKey);
+
+            const dayIndex = DAYS_MAP[day];
+            if (!dayIndex) {
+                addOverflow(course.title, `${day} ${startTimeStr}–${endTimeStr}`);
+                return;
             }
+
+            events.push({ title: course.title, location: course.venue || "", dayIndex, startKey, endKey, segName });
         });
     });
 
-    const hasLateCourses = events.some(ev => parseInt(ev.startTime) >= 180000);
+    // ── Determine layout ──────────────────────────────────────────────────────
+    const hasLateCourses = events.some(ev => parseInt(ev.startKey) >= 180000);
+    const hasSaturday    = events.some(ev => ev.dayIndex === 6);
+    const hasSunday      = events.some(ev => ev.dayIndex === 7);
+    const hasOverflow    = overflowCourses.length > 0;
 
-    const columns = [
-        { label: "9:00\n9:55", start: "090000", end: "095500" },
-        { label: "10:00\n10:55", start: "100000", end: "105500" },
-        { label: "11:00\n11:55", start: "110000", end: "115500" },
-        { label: "12:00\n12:55", start: "120000", end: "125500" },
-        { label: "12:55\n14:30", type: "break", text: "Lunch", width: 60 },
-        { label: "14:30\n15:55", start: "143000", end: "155500" },
-        { label: "16:00\n17:25", start: "160000", end: "172500" }
-    ];
+    const columns = [...BASE_COLUMNS];
+    if (hasLateCourses) columns.push(...LATE_COLUMNS);
 
-    if (hasLateCourses) {
-        columns.push({ label: "", type: "break", text: "S\nN\nA\nC\nK\n\nB\nR\nE\nA\nK", width: 45 });
-        columns.push({ label: "18.00\n19:25", start: "180000", end: "192500" });
-        columns.push({ label: "19:30\n21.00", start: "193000", end: "210000" });
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    if (hasSaturday) days.push("Saturday");
+    if (hasSunday)   days.push("Sunday");
+    const numDays = days.length;
+
+    // ── Build grid with multi-slot colSpan ────────────────────────────────────
+    function findCoveredColIndices(startKey, endKey) {
+        const startM = keyToMins(startKey);
+        const endM   = keyToMins(endKey);
+        const covered = [];
+        for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            if (col.type) continue; 
+            if (startM < col.endMins && endM > col.startMins) covered.push(i);
+        }
+        return covered;
     }
 
+    const grid = Array.from({ length: 8 }, () => Array.from({ length: columns.length }, () => null));
+
+    events.forEach(ev => {
+        const covered = findCoveredColIndices(ev.startKey, ev.endKey);
+        if (covered.length === 0) {
+            addOverflow(ev.title, `${ev.startKey}`);
+            return;
+        }
+        const firstCol = covered[0];
+        const colSpan  = covered[covered.length - 1] - covered[0] + 1;
+        if (!grid[ev.dayIndex][firstCol]) grid[ev.dayIndex][firstCol] = [];
+        grid[ev.dayIndex][firstCol].push({ ...ev, colSpan });
+    });
+
+    // ── Pre-compute Consistent Course Colors ──────────────────────────────────
     const slotMapping = {
         "1": { "090000": "A", "100000": "B", "110000": "C", "120000": "D", "143000": "P", "160000": "Q", "180000": "W", "193000": "X" },
         "2": { "090000": "D", "100000": "E", "110000": "F", "120000": "G", "143000": "R", "160000": "S", "180000": "Y", "193000": "Z" },
         "3": { "090000": "B", "100000": "C", "110000": "A", "120000": "G", "143000": "F", "160000": "Challenge\nLectures", "180000": "", "193000": "" },
         "4": { "090000": "C", "100000": "A", "110000": "B", "120000": "E", "143000": "Q", "160000": "P", "180000": "W", "193000": "X" },
-        "5": { "090000": "E", "100000": "F", "110000": "D", "120000": "G", "143000": "S", "160000": "R", "180000": "Y", "193000": "Z" }
+        "5": { "090000": "E", "100000": "F", "110000": "D", "120000": "G", "143000": "S", "160000": "R", "180000": "Y", "193000": "Z" },
     };
-
     const slotColors = {
         "A": "#FFD1DC", "B": "#FFE5B4", "C": "#FFFFB5", "D": "#D4F0F0",
         "E": "#CCE2CB", "F": "#E8DFF5", "G": "#FCE1E4", "P": "#F3C5FF",
         "Q": "#E2F0CB", "R": "#FFDFBA", "S": "#CBAACB", "W": "#FF9AA2",
-        "X": "#E2F0CB", "Y": "#B5EAD7", "Z": "#C7CEEA", "Challenge\nLectures": "#F0F0F0"
+        "X": "#E2F0CB", "Y": "#B5EAD7", "Z": "#C7CEEA", "Challenge\nLectures": "#F0F0F0",
     };
 
-    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-    const grid = Array.from({ length: 6 }, () => Array.from({ length: columns.length }, () => []));
-
+    const courseColors = {};
+    
     events.forEach(ev => {
-        const colIndex = columns.findIndex(c => c.start === ev.startTime);
-        if (colIndex !== -1) {
-            grid[ev.dayIndex][colIndex].push(ev);
+        const slotName = slotMapping[String(ev.dayIndex)]?.[ev.startKey] || "";
+        if (slotColors[slotName] && !courseColors[ev.title]) {
+            courseColors[ev.title] = slotColors[slotName];
         }
     });
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    const scale = 2;
-    const baseWidth = hasLateCourses ? 1500 : 1250;
-    const baseHeight = 1000; 
+    events.forEach(ev => {
+        if (!courseColors[ev.title]) {
+            courseColors[ev.title] = "#D4E6F1"; 
+        }
+    });
 
-    canvas.width = baseWidth * scale;
+    // ── Canvas setup ──────────────────────────────────────────────────────────
+    const scale        = 2;
+    const timetableRightEdge = hasLateCourses ? 1500 : 1250;
+    const overflowWidth = hasOverflow ? 350 : 0;
+    const baseWidth    = timetableRightEdge + overflowWidth;
+    const startX       = 110;
+    const startY       = 90;
+    const headerH      = 50;
+    const dayRowH      = 160;
+    const tableWidth   = timetableRightEdge - startX - 20;
+    const tableHeight  = headerH + numDays * dayRowH;
+    const baseHeight   = startY + tableHeight + 20; // Removed bottom overflow height calc
+
+    const canvas  = document.createElement('canvas');
+    const ctx     = canvas.getContext('2d');
+    canvas.width  = baseWidth  * scale;
     canvas.height = baseHeight * scale;
     ctx.scale(scale, scale);
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, baseWidth, baseHeight);
 
-    const startX = 110;
-    const startY = 90;
-    const tableWidth = baseWidth - startX - 20;
-    const tableHeight = baseHeight - startY - 20;
-    
-    // Fixed header height, remainder distributed to 5 days
-    const headerHeight = 50; 
-    const dayRowHeight = (tableHeight - headerHeight) / 5;
-    
-    let dynamicColsCount = columns.filter(c => !c.width).length;
-    let fixedWidthTotal = columns.reduce((sum, c) => sum + (c.width || 0), 0);
-    const defaultColWidth = (tableWidth - fixedWidthTotal) / dynamicColsCount;
-    
-    columns.forEach(c => {
-        if (!c.width) c.width = defaultColWidth;
-    });
+    const fixedWidthTotal  = columns.reduce((s, c) => s + (c.width || 0), 0);
+    const dynamicColsCount = columns.filter(c => !c.width).length;
+    const defaultColWidth  = dynamicColsCount > 0 ? (tableWidth - fixedWidthTotal) / dynamicColsCount : 0;
+    columns.forEach(c => { if (!c.width) c.width = defaultColWidth; });
 
+    // ── Canvas draw helpers ───────────────────────────────────────────────────
     function drawText(text, x, y, w, h, font = "15px Arial", maxLines = 5) {
         if (!text) return;
-        ctx.font = font;
-        ctx.fillStyle = "#000000";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        
-        const lines = text.split('\n');
-        const lineHeight = parseInt(font.match(/\d+/)[0], 10) * 1.3;
-        const textHeight = lines.length * lineHeight;
-        const startYPos = y + (h / 2) - (textHeight / 2) + (lineHeight / 2);
-        
+        ctx.font          = font;
+        ctx.fillStyle     = "#000000";
+        ctx.textAlign     = "center";
+        ctx.textBaseline  = "middle";
+        const lines       = text.split('\n');
+        const lineHeight  = parseInt(font.match(/\d+/)[0], 10) * 1.3;
+        const textHeight  = lines.length * lineHeight;
+        const startYPos   = y + (h / 2) - (textHeight / 2) + (lineHeight / 2);
         lines.forEach((line, i) => {
-            if (i < maxLines) {
-                ctx.fillText(line, x + w / 2, startYPos + (i * lineHeight), w - 8);
-            }
+            if (i < maxLines) ctx.fillText(line, x + w / 2, startYPos + (i * lineHeight), w - 8);
         });
     }
 
     function drawMultiFontText(linesObj, x, y, w, h) {
-        ctx.textAlign = "center";
+        ctx.textAlign    = "center";
         ctx.textBaseline = "middle";
-        
-        let totalHeight = 0;
+        let totalHeight  = 0;
         linesObj.forEach(line => {
-            const size = parseInt(line.font.match(/\d+/)[0], 10);
+            const size     = parseInt(line.font.match(/\d+/)[0], 10);
             line.lineHeight = size * 1.3;
-            totalHeight += line.lineHeight;
+            totalHeight    += line.lineHeight;
         });
-        
         let currentY = y + (h / 2) - (totalHeight / 2);
-        
         linesObj.forEach(line => {
-            ctx.font = line.font;
+            ctx.font      = line.font;
             ctx.fillStyle = line.color || "#000000";
-            currentY += line.lineHeight / 2;
+            currentY     += line.lineHeight / 2;
             ctx.fillText(line.text, x + w / 2, currentY, w - 8);
-            currentY += line.lineHeight / 2;
+            currentY     += line.lineHeight / 2;
         });
     }
 
-    ctx.font = "bold 26px Arial";
+    // ── Draw title & Header ───────────────────────────────────────────────────
+    ctx.font      = "bold 26px Arial";
     ctx.textAlign = "center";
     ctx.fillStyle = "#000000";
-    ctx.fillText("TIMETABLE SLOT", baseWidth / 2, 50);
+    ctx.fillText("TIMETABLE SLOT", timetableRightEdge / 2, 50);
 
     ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 1;
+    ctx.lineWidth   = 1;
 
-    ctx.strokeRect(20, startY, startX - 20, headerHeight);
+    ctx.strokeRect(20, startY, startX - 20, headerH);
     let currentX = startX;
     columns.forEach(col => {
-        ctx.strokeRect(currentX, startY, col.width, headerHeight);
-        drawText(col.label, currentX, startY, col.width, headerHeight, "bold 15px Arial");
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(currentX, startY, col.width, headerH);
+        ctx.strokeRect(currentX, startY, col.width, headerH);
+        drawText(col.label, currentX, startY, col.width, headerH, "bold 15px Arial");
         currentX += col.width;
     });
 
+    // ── Draw break columns ────────────────────────────────────────────────────
     currentX = startX;
     columns.forEach(col => {
         if (col.type === "break") {
-            ctx.strokeRect(currentX, startY + headerHeight, col.width, tableHeight - headerHeight);
-            drawText(col.text, currentX, startY + headerHeight, col.width, tableHeight - headerHeight, "16px Arial");
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(currentX, startY + headerH, col.width, numDays * dayRowH);
+            ctx.strokeRect(currentX, startY + headerH, col.width, numDays * dayRowH);
+            drawText(col.text, currentX, startY + headerH, col.width, numDays * dayRowH, "16px Arial");
         }
         currentX += col.width;
     });
 
-    for (let dayIndex = 1; dayIndex <= 5; dayIndex++) {
-        const currentY = startY + headerHeight + ((dayIndex - 1) * dayRowHeight);
-        
-        ctx.strokeRect(20, currentY, startX - 20, dayRowHeight);
-        drawText(days[dayIndex - 1], 20, currentY, startX - 20, dayRowHeight, "bold 15px Arial");
+    // ── Draw each day row ─────────────────────────────────────────────────────
+    for (let dayIdx = 0; dayIdx < numDays; dayIdx++) {
+        const dayIndex = dayIdx + 1;                              
+        const currentY = startY + headerH + (dayIdx * dayRowH);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(20, currentY, startX - 20, dayRowH);
+        ctx.strokeRect(20, currentY, startX - 20, dayRowH);
+        drawText(days[dayIdx], 20, currentY, startX - 20, dayRowH, "bold 15px Arial");
 
         currentX = startX;
-        for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+        let colIndex = 0;
+
+        while (colIndex < columns.length) {
             const col = columns[colIndex];
-            
-            if (col.type !== "break") {
-                const cellEvents = grid[dayIndex][colIndex];
-                const slotName = slotMapping[dayIndex][col.start] || "";
-                
-                if (cellEvents.length === 0) {
-                    ctx.fillStyle = "#ffffff";
-                    ctx.fillRect(currentX, currentY, col.width, dayRowHeight);
-                    ctx.strokeRect(currentX, currentY, col.width, dayRowHeight);
-                    drawText(slotName, currentX, currentY, col.width, dayRowHeight, "15px Arial");
-                } else {
-                    ctx.fillStyle = slotColors[slotName] || "#ffffff";
-                    ctx.fillRect(currentX, currentY, col.width, dayRowHeight);
-                    ctx.strokeRect(currentX, currentY, col.width, dayRowHeight);
-                    drawText(slotName, currentX, currentY, col.width, 28, "bold 14px Arial");
-                    
-                    const segments = cellEvents.length;
-                    const drawAreaHeight = dayRowHeight - 28; 
-                    const segmentHeight = drawAreaHeight / segments;
 
-                    for (let s = 0; s < segments; s++) {
-                        const ev = cellEvents[s];
-                        const segY = currentY + 28 + (s * segmentHeight);
-                        
-                        if (s > 0) {
-                            ctx.beginPath();
-                            ctx.moveTo(currentX, segY);
-                            ctx.lineTo(currentX + col.width, segY);
-                            ctx.stroke();
-                        }
+            if (col.type === "break") {
+                currentX += col.width;
+                colIndex++;
+                continue;
+            }
 
-                        let linesObj = [];
-                        if (ev.title) {
-                            const parts = ev.title.split(':');
-                            const code = parts[0].trim();
-                            const name = parts.length > 1 ? parts.slice(1).join(':').trim() : "";
-                            
-                            if (name) linesObj.push({ text: name, font: "bold 15px Arial" });
-                            linesObj.push({ text: code, font: "13px Arial" });
-                        }
+            const cellEvents = grid[dayIndex][colIndex];
+            const slotName   = slotMapping[String(dayIndex)]?.[col.start] || "";
 
-                        if (ev.segName) linesObj.push({ text: `(Seg ${ev.segName})`, font: "12px Arial" });
-                        if (ev.location) linesObj.push({ text: ev.location, font: "12px Arial" });
+            let drawnWidth = col.width;
+            let colAdvance = 1;
 
-                        drawMultiFontText(linesObj, currentX, segY, col.width, segmentHeight);
+            if (cellEvents && cellEvents.length > 0) {
+                const maxSpan = Math.max(...cellEvents.map(ev => ev.colSpan || 1));
+                if (maxSpan > 1) {
+                    drawnWidth = 0;
+                    let spanned = 0;
+                    while (spanned < maxSpan && (colIndex + spanned) < columns.length) {
+                        const sc = columns[colIndex + spanned];
+                        if (sc.type === "break") break; 
+                        drawnWidth += sc.width;
+                        spanned++;
                     }
+                    colAdvance = spanned;
                 }
             }
-            currentX += col.width;
+
+            if (!cellEvents || cellEvents.length === 0) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(currentX, currentY, drawnWidth, dayRowH);
+                ctx.strokeRect(currentX, currentY, drawnWidth, dayRowH);
+                drawText(slotName, currentX, currentY, drawnWidth, dayRowH, "15px Arial");
+            } else {
+                cellEvents.sort((a, b) => {
+                    const segA = parseInt((a.segName || '99').match(/\d+/) || ['99'], 10);
+                    const segB = parseInt((b.segName || '99').match(/\d+/) || ['99'], 10);
+                    return segA - segB;
+                });
+
+                ctx.fillStyle = courseColors[cellEvents[0].title] || "#D4E6F1";
+                ctx.fillRect(currentX, currentY, drawnWidth, dayRowH);
+                ctx.strokeRect(currentX, currentY, drawnWidth, dayRowH);
+
+                drawText(slotName, currentX, currentY, drawnWidth, 28, "bold 14px Arial");
+
+                const segments    = cellEvents.length;
+                const drawAreaH   = dayRowH - 28;
+                const segmentH    = drawAreaH / segments;
+
+                for (let s = 0; s < segments; s++) {
+                    const ev   = cellEvents[s];
+                    const segY = currentY + 28 + (s * segmentH);
+
+                    if (s > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(currentX,             segY);
+                        ctx.lineTo(currentX + drawnWidth, segY);
+                        ctx.stroke();
+                    }
+
+                    const linesObj = [];
+                    if (ev.title) {
+                        const parts = ev.title.split(':');
+                        const code  = parts[0].trim();
+                        const name  = parts.length > 1 ? parts.slice(1).join(':').trim() : "";
+                        
+                        if (name) {
+                            ctx.font = "bold 15px Arial";
+                            const maxWidth = drawnWidth - 10;
+                            
+                            if (ctx.measureText(name).width > maxWidth) {
+                                const words = name.split(' ');
+                                let line1 = '';
+                                let i = 0;
+                                
+                                for (; i < words.length; i++) {
+                                    const testLine = line1 + (line1 ? ' ' : '') + words[i];
+                                    if (ctx.measureText(testLine).width > maxWidth && i > 0) break;
+                                    line1 = testLine;
+                                }
+                                
+                                let line2 = words.slice(i).join(' ');
+                                if (line2 && ctx.measureText(line2).width > maxWidth) {
+                                    let truncLine2 = '';
+                                    let j = 0;
+                                    const remainingWords = words.slice(i);
+                                    for (; j < remainingWords.length; j++) {
+                                        const testLine2 = truncLine2 + (truncLine2 ? ' ' : '') + remainingWords[j];
+                                        if (ctx.measureText(testLine2 + '...').width > maxWidth && j > 0) break;
+                                        truncLine2 = testLine2;
+                                    }
+                                    line2 = truncLine2 + '...';
+                                }
+                                
+                                if (!line1) {
+                                    line1 = words[0];
+                                    line2 = words.slice(1).join(' ');
+                                }
+
+                                linesObj.push({ text: line1, font: "bold 15px Arial" });
+                                if (line2) linesObj.push({ text: line2, font: "bold 15px Arial" });
+                            } else {
+                                linesObj.push({ text: name, font: "bold 15px Arial" });
+                            }
+                        }
+
+                        const segSuffix = (ev.segName && ev.segName !== '1-6') ? ` (Seg ${ev.segName})` : '';
+                        linesObj.push({ text: code + segSuffix, font: "13px Arial" });
+                    }
+                    
+                    if (ev.location) linesObj.push({ text: ev.location, font: "12px Arial" });
+
+                    drawMultiFontText(linesObj, currentX, segY, drawnWidth, segmentH);
+                }
+            }
+
+            currentX  += drawnWidth;
+            colIndex  += colAdvance;
         }
+    }
+
+    // ── Overflow section (Now on the Right) ───────────────────────────────────
+    if (hasOverflow) {
+        const ovStartX    = timetableRightEdge + 20;
+        const ovStartY    = startY;
+        
+        ctx.font      = "bold 18px Arial";
+        ctx.fillStyle = "#000000";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("Other Courses", ovStartX, ovStartY);
+        ctx.font      = "14px Arial";
+        ctx.fillStyle = "#555555";
+        ctx.fillText("(No Schedule / Unmatched)", ovStartX, ovStartY + 22);
+
+        let listY = ovStartY + 60;
+        
+        overflowCourses.forEach((oc) => {
+            ctx.font = "bold 15px Arial";
+            ctx.fillStyle = "#333333";
+            
+            // Handle text wrapping for long overflow titles
+            const maxListWidth = overflowWidth - 40;
+            const words = oc.fullTitle.split(' ');
+            let line = '';
+            const titleLines = [];
+            
+            for(let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxListWidth && n > 0) {
+                    titleLines.push(line);
+                    line = words[n] + ' ';
+                } else {
+                    line = testLine;
+                }
+            }
+            titleLines.push(line);
+            
+            titleLines.forEach((tLine, idx) => {
+                const prefix = idx === 0 ? "• " : "  ";
+                ctx.fillText(prefix + tLine.trim(), ovStartX, listY);
+                listY += 20;
+            });
+
+            ctx.font = "13px Arial";
+            ctx.fillStyle = "#666666";
+            const info = oc.timing ? `Timing: ${oc.timing}` : 'No timings available';
+            ctx.fillText(`  ${info}`, ovStartX, listY);
+            
+            listY += 25; // Space between items
+        });
     }
 
     return canvas.toDataURL('image/png');
