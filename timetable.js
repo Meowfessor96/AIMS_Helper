@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
     const fetchBtn = document.getElementById('fetchCoursesBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
     const selectAll = document.getElementById('selectAll');
     const loader = document.getElementById('loader');
     const themeToggle = document.getElementById('theme-toggle');
@@ -52,18 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    downloadBtn.addEventListener('click', () => {
+    // ── Download helpers ──────────────────────────────────────────────────────
+    function doIcsDownload() {
         const selectedCourses = getSelectedCourses();
         if (selectedCourses.length === 0) {
             alert('Please select at least one course to download.');
             return;
         }
-
         const reminder = document.getElementById('reminderTime').value;
         const icsString = generateICSContent(selectedCourses, reminder);
         const blob = new Blob([icsString], { type: 'text/calendar;charset=utf-8' });
         const url = URL.createObjectURL(blob);
-
         const a = document.createElement('a');
         a.href = url;
         a.download = 'course_schedule.ics';
@@ -71,6 +69,70 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    async function doImageDownload() {
+        const selectedCourses = getSelectedCourses();
+        if (selectedCourses.length === 0) {
+            alert('Please select at least one course to download.');
+            return;
+        }
+        const dataUrl = await generateTimetableImage(selectedCourses);
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'timetable.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // ── Single Download button → toggles dropdown ─────────────────────────────
+    const downloadBtn      = document.getElementById('downloadBtn');
+    const downloadDropdown = document.getElementById('downloadDropdown');
+    const downloadIcsOption = document.getElementById('downloadIcsOption');
+    const downloadImgOption = document.getElementById('downloadImgOption');
+    const downloadBothOption = document.getElementById('downloadBothOption');
+
+    function closeDropdown() {
+        downloadDropdown.classList.remove('open');
+        downloadBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = downloadDropdown.classList.toggle('open');
+        downloadBtn.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    downloadIcsOption.addEventListener('click', () => {
+        closeDropdown();
+        doIcsDownload();
+    });
+    downloadImgOption.addEventListener('click', async () => {
+        closeDropdown();
+        await doImageDownload();
+    });
+    downloadBothOption.addEventListener('click', async () => {
+        closeDropdown();
+        const selectedCourses = getSelectedCourses();
+        if (selectedCourses.length === 0) {
+            alert('Please select at least one course to download.');
+            return;
+        }
+        // Pre-generate the image while the popup is still open (slow async step)
+        const dataUrl = await generateTimetableImage(selectedCourses);
+        // Now fire both downloads synchronously in one JS task before popup closes
+        doIcsDownload();
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'timetable.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.download-btn-wrap')) closeDropdown();
     });
     
     selectAll.addEventListener('change', (event) => {
@@ -297,7 +359,8 @@ function displayCoursesForSelection(data) {
     
     if (courseCounter > 0) {
         controls.style.display = 'flex';
-        footer.style.display   = 'block';
+        footer.classList.add('footer-visible');
+        document.body.classList.add('timetable-active');
         document.getElementById('selectAll').checked = true;
         updatePreview();
     } else {
@@ -310,13 +373,13 @@ function ensurePreviewContainer() {
         const container  = document.createElement('div');
         container.id     = 'timetable-preview-container';
         container.style.display    = 'none';
-        container.style.margin     = '15px 0';
+        container.style.margin     = '8px 0';
         container.style.textAlign  = 'center';
 
         const img  = document.createElement('img');
         img.id     = 'timetable-preview-img';
         img.style.maxWidth    = '100%';
-        img.style.maxHeight   = '220px';
+        img.style.maxHeight   = '140px';
         img.style.cursor      = 'pointer';
         img.style.border      = '1px solid #ccc';
         img.style.borderRadius = '4px';
