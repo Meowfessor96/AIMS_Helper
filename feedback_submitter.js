@@ -16,11 +16,17 @@ document.getElementById('submitFeedbackBtn').addEventListener('click', async () 
             return;
         }
         
-        await chrome.scripting.executeScript({
+        const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             function: findAndSubmitFeedback
         });
-        status.innerHTML = 'Refresh the page to check';
+        
+        if (results && results[0] && results[0].result) {
+            const { submittedCount, totalCount } = results[0].result;
+            status.innerHTML = `Submitted ${submittedCount}/${totalCount} courses. Refresh page to check.`;
+        } else {
+            status.innerHTML = 'Refresh the page to check';
+        }
     } catch (error) {
         status.innerHTML = `Error: ${error.message}`;
     } finally {
@@ -32,15 +38,26 @@ document.getElementById('submitFeedbackBtn').addEventListener('click', async () 
 
 async function findAndSubmitFeedback() {
     console.log('=== IITH Feedback Auto-Submitter ===');
+
+    let p = document.createElement('div');
+    p.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#2563eb;color:white;padding:15px;z-index:99999;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-family:sans-serif;max-width:80%;word-wrap:break-word;line-height:1.4;';
+    document.body.appendChild(p);
+    const f = (m) => { p.innerHTML = m; };
+
+    f('Scanning for feedback...');
     
     const feedbackLinks = document.querySelectorAll('a[href*="/aims/fmCourseFb/courseFeedback/0/"]');
     
     if (feedbackLinks.length === 0) {
         console.log('No feedback courses found.');
-        return;
+        f('No feedback courses found.');
+        setTimeout(() => p.remove(), 3000);
+        return { submittedCount: 0, totalCount: 0 };
     }
     
     console.log(`Found ${feedbackLinks.length} courses with feedback enabled.\n`);
+    f(`Found ${feedbackLinks.length} courses.<br>Starting...`);
+    let submittedCount = 0;
     
     for (const link of feedbackLinks) {
         const url = link.href;
@@ -51,6 +68,7 @@ async function findAndSubmitFeedback() {
         const courseName = row?.querySelector('.col2')?.textContent.trim() || 'Unknown';
         
         console.log(`\n ${courseCode} - ${courseName}`);
+        f(`<b>Processing:</b><br>${courseCode} - ${courseName}`);
         
         try {
             const response = await fetch(url, {
@@ -64,6 +82,8 @@ async function findAndSubmitFeedback() {
             
             if (!response.ok) {
                 console.log(`Failed to fetch (Status: ${response.status})`);
+                f(`<b>Failed (Network):</b><br>${courseCode}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
             }
             
@@ -74,6 +94,8 @@ async function findAndSubmitFeedback() {
             
             if (!instructorMatch || !rcIdMatch) {
                 console.log('Could not extract data');
+                f(`<b>Failed (No Data):</b><br>${courseCode}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
             }
             
@@ -142,16 +164,26 @@ async function findAndSubmitFeedback() {
             
             if (submitResponse.ok) {
                 console.log('Feedback submitted successfully!');
+                submittedCount++;
             } else {
                 console.log(`Submission failed (Status: ${submitResponse.status})`);
+                f(`<b>Submit Failed:</b><br>${courseCode}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
         } catch (error) {
             console.log(`Error: ${error.message}`);
+            f(`<b>Error:</b><br>${error.message}`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     console.log('\n=== Complete ===');
+    f(`<b>Complete!</b><br>Submitted: ${submittedCount}/${feedbackLinks.length}`);
+    setTimeout(() => p.remove(), 4000);
+
+    return { submittedCount, totalCount: feedbackLinks.length };
 }
+
