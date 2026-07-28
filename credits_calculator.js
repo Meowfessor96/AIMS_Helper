@@ -151,8 +151,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const isAdditional = type === "Additional" || type.toLowerCase().includes("additional");
       degreeData[degree].semesters[semester].courses.push(course);
-      degreeData[degree].semesters[semester].allCredits += credits;
       if (!isAdditional) {
+        degreeData[degree].semesters[semester].allCredits += credits;
         degreeData[degree].totalAllCredits += credits;
       }
 
