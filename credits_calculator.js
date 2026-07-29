@@ -259,6 +259,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     let changesMade = 0;
 
     allCourses.forEach(course => {
+      const currentType = String(course.courseElectiveTypeDesc || "").trim();
+      const isProtected = currentType === "Additional" || currentType.toLowerCase().includes("additional") ||
+                          currentType === "Audit" || currentType.toLowerCase().includes("audit");
+      if (isProtected) {
+        return;
+      }
+
       const suggestion = suggestedCourseTypes[course.courseCd];
       if (suggestion) {
         const key = `${course.courseCd}_${course.periodName}`;

@@ -38,7 +38,8 @@
 
             <div class="loader-container" id="loader">
                 <div class="loader"></div>
-                <span>Fetching data...</span>
+                <span>Fetching timetable data...</span>
+                <span class="loader-warning">&#9888; AIMS API can be slow &mdash; please wait</span>
             </div>
             <div class="controls-container" id="controls">
                 <div class="option-group">
@@ -60,10 +61,36 @@
         </main>
 
         <footer id="footer">
-            <button id="downloadBtn" class="button button-success">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"></path></svg>
-                <span>Download Selected as .ics</span>
-            </button>
+            <div class="download-btn-wrap">
+                <button id="downloadBtn" class="button button-success" aria-expanded="false">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M5 20H19V18H5V20ZM19 9H15V3H9V9H5L12 16L19 9Z"></path></svg>
+                    <span>Download</span>
+                    <svg class="download-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                </button>
+                <div id="downloadDropdown" class="download-dropdown" role="menu" aria-hidden="true">
+                    <button id="downloadIcsOption" class="download-dropdown-item" role="menuitem">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+                        <div>
+                            <span class="download-opt-title">Calendar (.ics)</span>
+                            <span class="download-opt-sub">Import into Google Calendar, Outlook, etc.</span>
+                        </div>
+                    </button>
+                    <button id="downloadImgOption" class="download-dropdown-item" role="menuitem">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        <div>
+                            <span class="download-opt-title">Image (.png)</span>
+                            <span class="download-opt-sub">Save timetable as a picture</span>
+                        </div>
+                    </button>
+                    <button id="downloadBothOption" class="download-dropdown-item" role="menuitem">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"/></svg>
+                        <div>
+                            <span class="download-opt-title">Both (.ics + .png)</span>
+                            <span class="download-opt-sub">Download calendar and image together</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
         </footer>
     </div>
     <script src="timetable.js"></script>

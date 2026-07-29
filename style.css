@@ -34,6 +34,27 @@ body {
     transition: background-color 0.3s ease;
 }
 
+/* ── Timetable active popup layout ──────────────────────────────────────────
+   Strategy: body is a fixed 560px box, footer is fixed to the bottom of the
+   popup viewport (position:fixed works perfectly in Chrome extension popups),
+   and the scrollable content just needs padding-bottom so nothing hides behind it.
+   No flex juggling required. */
+body.timetable-active {
+    height: 560px;
+    overflow: hidden;
+}
+
+body.timetable-active #main-content {
+    overflow-y: auto;
+    /* push content clear of the fixed footer (~68px tall) */
+    padding-bottom: 72px;
+    box-sizing: border-box;
+}
+
+body.timetable-active #course-selection {
+    max-height: none; /* let it grow naturally; main-content scrolls */
+}
+
 .container { padding: 16px; }
 
 /* Header */
@@ -106,7 +127,7 @@ body {
 .button-success:hover { background-color: var(--success-hover); }
 
 .loader-container {
-    display: none; flex-direction: column; align-items: center; gap: 10px; margin: 20px 0;
+    display: none; flex-direction: column; align-items: center; gap: 6px; margin: 20px 0;
     color: var(--primary-color);
 }
 .loader {
@@ -115,9 +136,16 @@ body {
 }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+.loader-warning {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    margin-top: 2px;
+    text-align: center;
+}
+
 #controls {
-    display: none; justify-content: space-between; align-items: center; margin-bottom: 12px;
-    padding: 10px; background-color: var(--card-background); border-radius: 6px;
+    display: none; justify-content: space-between; align-items: center; margin-bottom: 10px;
+    padding: 6px 10px; background-color: var(--card-background); border-radius: 6px;
     border: 1px solid var(--border-color);
 }
 .option-group, .select-all-group { display: flex; align-items: center; gap: 6px; }
@@ -128,7 +156,10 @@ label { font-size: 14px; color: var(--secondary-text-color); }
 }
 
 /* Course List */
-#course-selection { max-height: 200px; overflow-y: auto; }
+#course-selection {
+    overflow-y: auto;
+    max-height: 148px;
+}
 .course-item {
     display: flex; align-items: center; justify-content: space-between; padding: 8px;
     border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 6px;
@@ -145,7 +176,120 @@ label { font-size: 14px; color: var(--secondary-text-color); }
     background-color: var(--background-color); color: var(--text-color);
 }
 
-#footer { display: none; margin-top: 12px; }
+/* Footer — hidden by default, fixed to popup bottom when timetable is active.
+   position:fixed in a Chrome extension popup = fixed to the popup window bottom. */
+#footer {
+    display: none;
+}
+
+#footer.footer-visible {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 420px;
+    box-sizing: border-box;
+    padding: 8px 16px 12px;
+    background-color: var(--background-color);
+    border-top: 1px solid var(--border-color);
+    z-index: 200;
+}
+
+/* ── Single Download Button with Dropdown ──────────── */
+.download-btn-wrap {
+    position: relative;
+}
+
+.download-btn-wrap .button {
+    width: 100%;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    justify-content: center;
+    gap: 8px;
+}
+
+.download-chevron {
+    width: 20px !important;
+    height: 20px !important;
+    margin-left: 2px;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.button[aria-expanded="true"] .download-chevron {
+    transform: rotate(180deg);
+}
+
+.download-dropdown {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+    overflow: hidden;
+    z-index: 100;
+    animation: dropdownFadeIn 0.15s ease;
+}
+
+.download-dropdown.open {
+    display: block;
+}
+
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.download-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+    font-family: inherit;
+}
+
+.download-dropdown-item:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.download-dropdown-item:hover {
+    background-color: var(--background-color);
+}
+
+.download-dropdown-item svg {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    color: var(--primary-color);
+    fill: var(--primary-color);
+}
+
+.download-opt-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.download-opt-sub {
+    display: block;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    margin-top: 1px;
+}
 
 #status {
             margin-top: var(--space-16);
