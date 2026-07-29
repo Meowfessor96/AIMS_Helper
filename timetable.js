@@ -129,8 +129,37 @@ async function scrapeTimetableData() {
             });
 
             observer.observe(timetableDiv, { childList: true, subtree: true });
-            icon.click();
-            //icon.click();
+
+                // Check if timetable is already open before clicking
+                if (timetableDiv.style.display !== 'none' && timetableDiv.querySelectorAll('tbody tr').length > 0) {
+                // Already open, trigger observer manually
+                observer.disconnect();
+                observer.takeRecords();
+                
+                let scheduleData = [];
+                        const tableRows = timetableDiv.querySelectorAll('tbody tr');
+                        if (tableRows.length > 0 && !tableRows[0].textContent.includes("No Time Table Available")) {
+                                tableRows.forEach(row => {
+                                        const cells = row.querySelectorAll('td');
+                                        if (cells.length >= 3) {
+                                                try {
+                                                        const content = cells[2].textContent.trim();
+                                                        const parsed = JSON.parse(content);
+                                                        scheduleData = scheduleData.concat(parsed);
+                                                } catch (e) {
+                                                        const segName = cells[1]?.textContent.trim() || '';
+                                                        const timing = cells[2].textContent.trim();
+                                                        scheduleData.push(segName ? `${timing}----${segName}` : timing);
+                                                }
+                                        }
+                                });
+                        }
+                        resolve({ title: fullTitle, schedule: scheduleData });
+                } else {
+                        // Not open, click to open it
+                        icon.click();
+                }
+                //icon.click();
         });
     };
 
@@ -257,52 +286,93 @@ function displayCoursesForSelection(data) {
 
     ensurePreviewContainer();
 
-    let courseCounter = 0;
-    data.forEach(course => {
-        // REMOVED: if (!course.schedule || course.schedule.length === 0) return;
+    // Load saved preferences
+    chrome.storage.local.get(['timetablePreferences'], (result) => {
+        const savedPrefs = result.timetablePreferences || {};
 
-        courseCounter++;
-        const courseItem     = document.createElement('div');
-        courseItem.className = 'course-item';
+        let courseCounter = 0;
+        data.forEach(course => {
+            courseCounter++;
+            const courseItem     = document.createElement('div');
+            courseItem.className = 'course-item';
 
-        const labelGroup     = document.createElement('div');
-        labelGroup.className = 'course-label-group';
+            const labelGroup     = document.createElement('div');
+            labelGroup.className = 'course-label-group';
 
-        const checkbox       = document.createElement('input');
-        checkbox.type        = 'checkbox';
-        checkbox.id          = `course_${courseCounter}`;
-        checkbox.className   = 'course-checkbox';
-        // Pass empty arrays cleanly
-        checkbox.dataset.courseData = JSON.stringify({ title: course.title, rawSchedule: course.schedule || [] });
-        checkbox.checked     = true;
-        checkbox.addEventListener('change', schedulePreviewUpdate);
+            const checkbox       = document.createElement('input');
+            checkbox.type        = 'checkbox';
+            checkbox.id          = `course_${courseCounter}`;
+            checkbox.className   = 'course-checkbox';
+            checkbox.dataset.courseData = JSON.stringify({ title: course.title, rawSchedule: course.schedule || [] });
 
-        const label      = document.createElement('label');
-        label.htmlFor    = `course_${courseCounter}`;
-        label.textContent = course.title;
+            // Restore saved checkbox state (default to true if not saved)
+            const savedCourse = savedPrefs[course.title];
+            checkbox.checked = savedCourse !== undefined ? savedCourse.checked : true;
 
-        labelGroup.appendChild(checkbox);
-        labelGroup.appendChild(label);
-        
-        const venueInput       = document.createElement('input');
-        venueInput.type        = 'text';
-        venueInput.className   = 'venue-input';
-        venueInput.placeholder = 'Venue...';
-        venueInput.addEventListener('input', schedulePreviewUpdate);
+            checkbox.addEventListener('change', () => {
+                savePreferences();
+                schedulePreviewUpdate();
+            });
 
-        courseItem.appendChild(labelGroup);
-        courseItem.appendChild(venueInput);
-        selectionDiv.appendChild(courseItem);
+            const label      = document.createElement('label');
+            label.htmlFor    = `course_${courseCounter}`;
+            label.textContent = course.title;
+
+            labelGroup.appendChild(checkbox);
+            labelGroup.appendChild(label);
+
+            const venueInput       = document.createElement('input');
+            venueInput.type        = 'text';
+            venueInput.className   = 'venue-input';
+            venueInput.placeholder = 'Venue...';
+
+            // Restore saved venue
+            venueInput.value = savedCourse?.venue || '';
+
+            venueInput.addEventListener('input', () => {
+                savePreferences();
+                schedulePreviewUpdate();
+            });
+
+            courseItem.appendChild(labelGroup);
+            courseItem.appendChild(venueInput);
+            selectionDiv.appendChild(courseItem);
+        });
+
+        if (courseCounter > 0) {
+            controls.style.display = 'flex';
+            footer.style.display   = 'block';
+            updateSelectAllCheckbox();
+            updatePreview();
+        } else {
+            selectionDiv.textContent = 'Make sure you are on the course registration page.';
+        }
     });
-    
-    if (courseCounter > 0) {
-        controls.style.display = 'flex';
-        footer.style.display   = 'block';
-        document.getElementById('selectAll').checked = true;
-        updatePreview();
-    } else {
-        selectionDiv.textContent = 'Make sure you are on the course registration page.';
-    }
+}
+
+// Save current preferences to storage
+function savePreferences() {
+    const preferences = {};
+    document.querySelectorAll('.course-item').forEach(item => {
+        const checkbox = item.querySelector('.course-checkbox');
+        const venueInput = item.querySelector('.venue-input');
+        const courseData = JSON.parse(checkbox.dataset.courseData);
+
+        preferences[courseData.title] = {
+            checked: checkbox.checked,
+            venue: venueInput.value
+        };
+    });
+
+    chrome.storage.local.set({ timetablePreferences: preferences });
+}
+
+// Update "Select All" checkbox based on individual checkbox states
+function updateSelectAllCheckbox() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const courseCheckboxes = document.querySelectorAll('.course-checkbox');
+    const allChecked = Array.from(courseCheckboxes).every(cb => cb.checked);
+    selectAllCheckbox.checked = allChecked;
 }
 
 function ensurePreviewContainer() {
